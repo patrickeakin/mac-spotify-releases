@@ -1,0 +1,1 @@
+export { CoverArt } from './CoverArt';
