@@ -217,17 +217,42 @@ if (!gotTheLock) {
   // Handle macOS protocol handler
   app.on('open-url', (event, url) => {
     event.preventDefault();
+    console.log('🔗 open-url event received:', url);
     handleOAuthCallback(url);
   });
 }
 
 function handleOAuthCallback(url) {
+  console.log('🔄 handleOAuthCallback called with URL:', url);
+
   if (mainWindow && url.startsWith('numu://callback')) {
-    // Extract the hash fragment and send to renderer
-    const hash = url.split('#')[1];
-    if (hash) {
-      mainWindow.webContents.send('oauth-callback', hash);
+    console.log('✅ URL matches numu://callback pattern');
+
+    // Check for query string (authorization code flow)
+    const queryStart = url.indexOf('?');
+    if (queryStart !== -1) {
+      const queryString = url.substring(queryStart + 1);
+      console.log('📋 Extracted query string:', queryString);
+      console.log('📤 Sending oauth-callback to renderer');
+      mainWindow.webContents.send('oauth-callback', queryString);
+      return;
     }
+
+    // Fallback: Check for hash fragment (implicit flow)
+    const hashStart = url.indexOf('#');
+    if (hashStart !== -1) {
+      const hash = url.substring(hashStart + 1);
+      console.log('📋 Extracted hash (implicit flow):', hash);
+      console.log('📤 Sending oauth-callback to renderer');
+      mainWindow.webContents.send('oauth-callback', hash);
+      return;
+    }
+
+    console.log('❌ No query string or hash found in URL');
+  } else {
+    console.log('❌ URL does not match or mainWindow not ready');
+    console.log('   mainWindow exists:', !!mainWindow);
+    console.log('   URL starts with numu://callback:', url.startsWith('numu://callback'));
   }
 }
 

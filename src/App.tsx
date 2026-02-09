@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import './App.css';
-import { getAuthUrl, getAccessTokenFromUrl, getNewReleasesUnified, clearUnifiedCache } from './services';
+import { getAuthUrl, getAccessTokenFromUrl, getAuthorizationCodeFromUrl, exchangeCodeForToken, getNewReleasesUnified, clearUnifiedCache } from './services';
 import { CoverArt } from './components';
 
 interface Release {
@@ -28,42 +28,97 @@ function App() {
   const abortControllerRef = useRef<AbortController | null>(null);
 
   useEffect(() => {
-    // Handle OAuth callback from URL hash (browser/dev mode)
-    const accessToken = getAccessTokenFromUrl();
+    const handleAuthCallback = async () => {
+      // Handle OAuth callback - check for authorization code first (PKCE flow)
+      const authCode = getAuthorizationCodeFromUrl();
 
-    if (accessToken) {
-      localStorage.setItem('spotify_access_token', accessToken);
-      setIsAuthenticated(true);
+      if (authCode) {
+        console.log('🔑 Authorization code received, exchanging for token...');
+        try {
+          const accessToken = await exchangeCodeForToken(authCode);
+          localStorage.setItem('spotify_access_token', accessToken);
+          setIsAuthenticated(true);
+          console.log('✅ Authentication successful!');
 
-      // Clear the hash from URL
-      window.history.replaceState({}, document.title, window.location.pathname);
+          // Clear the code from URL
+          window.history.replaceState({}, document.title, window.location.pathname);
+        } catch (error) {
+          console.error('❌ Failed to exchange code for token:', error);
+          alert('Authentication failed. Please try again.');
+        }
+        return;
+      }
 
-      // Don't automatically fetch releases - wait for user to click button
-    }
+      // Fallback: Handle old implicit flow token (for backward compatibility)
+      const accessToken = getAccessTokenFromUrl();
+      if (accessToken) {
+        localStorage.setItem('spotify_access_token', accessToken);
+        setIsAuthenticated(true);
+
+        // Clear the hash from URL
+        window.history.replaceState({}, document.title, window.location.pathname);
+      }
+    };
+
+    handleAuthCallback();
 
     // Handle OAuth callback from Electron IPC
     if ((window as any).electronAPI?.onOAuthCallback) {
-      (window as any).electronAPI.onOAuthCallback((hash: string) => {
-        const params = new URLSearchParams(hash);
-        const token = params.get('access_token');
+      console.log('🎧 Setting up Electron OAuth callback listener');
+      (window as any).electronAPI.onOAuthCallback(async (callbackData: string) => {
+        console.log('📨 Received OAuth callback from Electron:', callbackData);
 
-        if (token) {
-          localStorage.setItem('spotify_access_token', token);
-          setIsAuthenticated(true);
+        // Check if it's an authorization code (starts with code=)
+        const params = new URLSearchParams(callbackData);
+        const code = params.get('code');
+        const error = params.get('error');
+
+        if (error) {
+          console.error('❌ OAuth error:', error);
+          alert(`Authentication error: ${error}`);
+          return;
+        }
+
+        if (code) {
+          console.log('🔑 Authorization code received, exchanging for token...');
+          try {
+            const accessToken = await exchangeCodeForToken(code);
+            localStorage.setItem('spotify_access_token', accessToken);
+            setIsAuthenticated(true);
+            console.log('✅ Authentication successful!');
+          } catch (error) {
+            console.error('❌ Failed to exchange code for token:', error);
+            alert('Authentication failed. Please try again.');
+          }
+        } else {
+          // Fallback: Check for access token (old implicit flow)
+          const token = params.get('access_token');
+          if (token) {
+            localStorage.setItem('spotify_access_token', token);
+            setIsAuthenticated(true);
+            console.log('✅ Authentication successful!');
+          } else {
+            console.error('❌ No authorization code or access token in callback');
+          }
         }
       });
+    } else {
+      console.log('⚠️ Not running in Electron or electronAPI not available');
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const handleLogin = () => {
-    const authUrl = getAuthUrl();
+  const handleLogin = async () => {
+    const authUrl = await getAuthUrl();
+    console.log('🚀 Starting OAuth flow with URL:', authUrl);
 
     // If running in Electron, open in external browser
     if ((window as any).electronAPI?.openExternal) {
+      console.log('💻 Running in Electron, opening external browser');
       (window as any).electronAPI.openExternal(authUrl);
     } else {
       // Browser mode - redirect normally
+      console.log('🌐 Running in browser, redirecting');
       window.location.href = authUrl;
     }
   };

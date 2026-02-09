@@ -9,6 +9,6 @@ export * from './electron-storage';
 
 // Re-export main functions for backward compatibility
 export { getNewReleasesUnified } from './unified-api';
-export { getAuthUrl, getAccessTokenFromUrl } from './spotify-client';
+export { getAuthUrl, getAccessTokenFromUrl, getAuthorizationCodeFromUrl, exchangeCodeForToken } from './spotify-client';
 export { clearUnifiedCache, getUnifiedCacheInfo } from './cache-manager';
 export type { FormattedRelease } from './types';
