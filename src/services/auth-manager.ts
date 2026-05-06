@@ -82,10 +82,22 @@ export class AuthManager {
         await secureStorage.set(TOKEN_KEY, next);
         this.current = next;
         return next.accessToken;
-      } catch (error) {
-        console.warn('Token refresh failed; clearing auth state', error);
-        await this.logout();
-        throw new Error('AUTH_EXPIRED');
+      } catch (error: any) {
+        // Only treat the refresh token as definitively bad on 4xx auth responses
+        // (Spotify returns 400 invalid_grant for revoked/expired refresh tokens).
+        // Network errors, 5xx, storage failures, etc. are transient — keep state
+        // intact so the next attempt can succeed.
+        const status = error?.response?.status;
+        const isAuthFailure = status === 400 || status === 401;
+
+        if (isAuthFailure) {
+          console.warn('Refresh token rejected by Spotify; clearing auth state', error);
+          await this.logout();
+          throw new Error('AUTH_EXPIRED');
+        }
+
+        console.warn('Token refresh failed transiently; keeping auth state', error);
+        throw error;
       } finally {
         this.inflightRefresh = null;
       }

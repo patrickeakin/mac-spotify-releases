@@ -135,10 +135,13 @@ describe('AuthManager', () => {
     expect(mockedRefresh).toHaveBeenCalledTimes(1);
   });
 
-  it('refresh failure clears auth state and throws AUTH_EXPIRED', async () => {
+  it('refresh logs out and throws AUTH_EXPIRED on a 400 invalid_grant', async () => {
     const mgr = new AuthManager();
     await mgr.setTokens({ accessToken: 'a', refreshToken: 'r', expiresIn: 60 });
-    mockedRefresh.mockRejectedValueOnce(new Error('invalid_grant'));
+    const authFailure = Object.assign(new Error('invalid_grant'), {
+      response: { status: 400, data: { error: 'invalid_grant' } },
+    });
+    mockedRefresh.mockRejectedValueOnce(authFailure);
 
     const events: boolean[] = [];
     mgr.onChange(authed => events.push(authed));
@@ -146,5 +149,29 @@ describe('AuthManager', () => {
     await expect(mgr.refresh()).rejects.toThrow('AUTH_EXPIRED');
     expect(mgr.isAuthenticated()).toBe(false);
     expect(events).toEqual([false]);
+  });
+
+  it('refresh preserves auth state on transient (non-4xx) failures', async () => {
+    const mgr = new AuthManager();
+    await mgr.setTokens({ accessToken: 'a', refreshToken: 'r', expiresIn: 60 });
+
+    const events: boolean[] = [];
+    mgr.onChange(authed => events.push(authed));
+
+    // Network error (no response) should not log out
+    mockedRefresh.mockRejectedValueOnce(new Error('Network Error'));
+    await expect(mgr.refresh()).rejects.toThrow('Network Error');
+    expect(mgr.isAuthenticated()).toBe(true);
+
+    // 5xx server error should not log out either
+    const serverError = Object.assign(new Error('server'), {
+      response: { status: 503 },
+    });
+    mockedRefresh.mockRejectedValueOnce(serverError);
+    await expect(mgr.refresh()).rejects.toThrow('server');
+    expect(mgr.isAuthenticated()).toBe(true);
+
+    // No listener notifications should have fired
+    expect(events).toEqual([]);
   });
 });
