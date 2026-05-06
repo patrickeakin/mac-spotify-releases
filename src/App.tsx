@@ -160,9 +160,11 @@ function App() {
     consumeBrowserCallback();
 
     const electronAPI = (window as any).electronAPI;
+    let unsubscribe: (() => void) | undefined;
+
     if (electronAPI?.onOAuthCallback) {
       console.log('🎧 Setting up Electron OAuth callback listener');
-      electronAPI.onOAuthCallback(async (callbackData: string) => {
+      unsubscribe = electronAPI.onOAuthCallback(async (callbackData: string) => {
         console.log('📨 Received OAuth callback from Electron');
         const params = new URLSearchParams(callbackData);
         const code = params.get('code');
@@ -191,6 +193,10 @@ function App() {
     } else {
       console.log('⚠️ Not running in Electron or electronAPI not available');
     }
+
+    return () => {
+      unsubscribe?.();
+    };
   }, []);
 
   const handleLogin = async () => {

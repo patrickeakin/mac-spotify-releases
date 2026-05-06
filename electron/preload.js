@@ -24,8 +24,12 @@ contextBridge.exposeInMainWorld('electronAPI', {
   // App info
   getVersion: () => ipcRenderer.invoke('get-version'),
 
-  // OAuth callback handler
+  // OAuth callback handler. Returns an unsubscribe function so listeners can
+  // be cleaned up (React StrictMode double-mounts useEffect, which would
+  // otherwise stack up duplicate listeners).
   onOAuthCallback: (callback) => {
-    ipcRenderer.on('oauth-callback', (event, hash) => callback(hash));
+    const wrapped = (event, payload) => callback(payload);
+    ipcRenderer.on('oauth-callback', wrapped);
+    return () => ipcRenderer.removeListener('oauth-callback', wrapped);
   }
 });
