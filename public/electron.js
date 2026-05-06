@@ -304,9 +304,15 @@ ipcMain.handle('store-clear', () => {
 });
 
 // Other IPC handlers
-ipcMain.handle('open-external', (event, url) => {
-  shell.openExternal(url);
-  return true;
+ipcMain.handle('open-external', async (event, url) => {
+  console.log('🌐 open-external called with:', url);
+  try {
+    await shell.openExternal(url);
+    return true;
+  } catch (error) {
+    console.error('❌ Failed to open external URL:', error);
+    return false;
+  }
 });
 
 ipcMain.handle('get-version', () => {
