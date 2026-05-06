@@ -4,7 +4,6 @@ import { getNewReleasesFromSpotify } from './spotify-releases';
 import { getCachedData, cacheData, hashArtistList } from './cache-manager';
 
 export const getNewReleasesUnified = async (
-  accessToken: string,
   onProgress?: (current: number, total: number, newReleases: number) => void
 ): Promise<FormattedRelease[]> => {
   // Slice 0: serve cached data immediately when available; only fetch on explicit refresh.
@@ -17,8 +16,8 @@ export const getNewReleasesUnified = async (
     return cachedData.releases;
   }
 
-  const profile = await getUserProfile(accessToken);
-  const followedArtists = await getFollowedArtists(accessToken);
+  const profile = await getUserProfile();
+  const followedArtists = await getFollowedArtists();
   if (followedArtists.length === 0) {
     console.error('No followed artists found');
     return [];
@@ -27,7 +26,6 @@ export const getNewReleasesUnified = async (
   console.log(`Fetching releases from Spotify for ${followedArtists.length} artists (market=${profile.country})`);
 
   const releases = await getNewReleasesFromSpotify(
-    accessToken,
     profile.country,
     followedArtists,
     onProgress

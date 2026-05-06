@@ -10,6 +10,12 @@ export interface SpotifyUserProfile {
   country: string;
 }
 
+export interface SpotifyTokens {
+  accessToken: string;
+  refreshToken: string;
+  expiresIn: number;
+}
+
 export interface SpotifyAlbumImage {
   url: string;
   height?: number;

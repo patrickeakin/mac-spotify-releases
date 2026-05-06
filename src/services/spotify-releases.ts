@@ -34,7 +34,6 @@ const albumToFormattedRelease = (album: SpotifyAlbum, primaryArtist: SpotifyArti
 };
 
 export const getNewReleasesFromSpotify = async (
-  accessToken: string,
   market: string,
   followedArtists: SpotifyArtist[],
   onProgress?: (current: number, total: number, newReleases: number) => void,
@@ -51,7 +50,7 @@ export const getNewReleasesFromSpotify = async (
     const artist = followedArtists[i];
 
     try {
-      const albums = await getArtistAlbums(artist.id, accessToken, market);
+      const albums = await getArtistAlbums(artist.id, market);
 
       for (const album of albums) {
         if (seenAlbumIds.has(album.id)) continue;

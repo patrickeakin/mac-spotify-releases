@@ -11,6 +11,13 @@ contextBridge.exposeInMainWorld('electronAPI', {
     clear: () => ipcRenderer.invoke('store-clear')
   },
 
+  // Secure (OS-keychain backed) storage for tokens
+  secureStore: {
+    get: (key) => ipcRenderer.invoke('safe-storage-get', key),
+    set: (key, value) => ipcRenderer.invoke('safe-storage-set', key, value),
+    delete: (key) => ipcRenderer.invoke('safe-storage-delete', key)
+  },
+
   // System integration
   openExternal: (url) => ipcRenderer.invoke('open-external', url),
 

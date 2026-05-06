@@ -7,6 +7,7 @@ export * from './release-formatter';
 export * from './cache-manager';
 export * from './unified-api';
 export * from './electron-storage';
+export * from './auth-manager';
 
 // Re-export main functions for backward compatibility
 export { getNewReleasesUnified } from './unified-api';

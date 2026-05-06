@@ -7,6 +7,11 @@ interface ElectronAPI {
     delete: (key: string) => Promise<boolean>;
     clear: () => Promise<boolean>;
   };
+  secureStore: {
+    get: (key: string) => Promise<any>;
+    set: (key: string, value: any) => Promise<boolean>;
+    delete: (key: string) => Promise<boolean>;
+  };
 }
 
 declare global {
@@ -111,3 +116,35 @@ class StorageService {
 }
 
 export const storage = new StorageService();
+
+class SecureStorageService {
+  private isElectron(): boolean {
+    return typeof window !== 'undefined' && window.electronAPI !== undefined;
+  }
+
+  async get(key: string): Promise<any> {
+    if (this.isElectron()) {
+      return await window.electronAPI!.secureStore.get(key);
+    }
+    const item = localStorage.getItem(`secure_${key}`);
+    return item ? JSON.parse(item) : null;
+  }
+
+  async set(key: string, value: any): Promise<void> {
+    if (this.isElectron()) {
+      await window.electronAPI!.secureStore.set(key, value);
+      return;
+    }
+    localStorage.setItem(`secure_${key}`, JSON.stringify(value));
+  }
+
+  async delete(key: string): Promise<void> {
+    if (this.isElectron()) {
+      await window.electronAPI!.secureStore.delete(key);
+      return;
+    }
+    localStorage.removeItem(`secure_${key}`);
+  }
+}
+
+export const secureStorage = new SecureStorageService();

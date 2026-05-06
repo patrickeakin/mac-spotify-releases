@@ -32,7 +32,7 @@ const callRelease = (
     daysBack?: number;
   } = {},
 ): Promise<FormattedRelease[]> =>
-  getNewReleasesFromSpotify('tok', 'US', artists, opts.onProgress, opts.daysBack ?? 180, FIXED_NOW);
+  getNewReleasesFromSpotify('US', artists, opts.onProgress, opts.daysBack ?? 180, FIXED_NOW);
 
 describe('getNewReleasesFromSpotify', () => {
   beforeEach(() => {

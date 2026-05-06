@@ -1,6 +1,16 @@
 import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import './App.css';
-import { getAuthUrl, getAccessTokenFromUrl, getAuthorizationCodeFromUrl, exchangeCodeForToken, getNewReleasesUnified, clearUnifiedCache, getCachedData } from './services';
+import {
+  authManager,
+  clearUnifiedCache,
+  exchangeCodeForToken,
+  getAccessTokenFromUrl,
+  getAuthUrl,
+  getAuthorizationCodeFromUrl,
+  getCachedData,
+  getNewReleasesUnified,
+  SpotifyTokens
+} from './services';
 import { CoverArt } from './components';
 
 const formatRelativeTime = (timestamp: number): string => {
@@ -42,146 +52,7 @@ function App() {
   const [lastUpdated, setLastUpdated] = useState<number | null>(null);
   const abortControllerRef = useRef<AbortController | null>(null);
 
-  useEffect(() => {
-    const handleAuthCallback = async () => {
-      // Handle OAuth callback - check for authorization code first (PKCE flow)
-      const authCode = getAuthorizationCodeFromUrl();
-
-      if (authCode) {
-        console.log('🔑 Authorization code received, exchanging for token...');
-        try {
-          const accessToken = await exchangeCodeForToken(authCode);
-          localStorage.setItem('spotify_access_token', accessToken);
-          setIsAuthenticated(true);
-          console.log('✅ Authentication successful!');
-
-          // Clear the code from URL
-          window.history.replaceState({}, document.title, window.location.pathname);
-        } catch (error) {
-          console.error('❌ Failed to exchange code for token:', error);
-          alert('Authentication failed. Please try again.');
-        }
-        return;
-      }
-
-      // Fallback: Handle old implicit flow token (for backward compatibility)
-      const accessToken = getAccessTokenFromUrl();
-      if (accessToken) {
-        localStorage.setItem('spotify_access_token', accessToken);
-        setIsAuthenticated(true);
-
-        // Clear the hash from URL
-        window.history.replaceState({}, document.title, window.location.pathname);
-      }
-    };
-
-    handleAuthCallback();
-
-    // Handle OAuth callback from Electron IPC
-    if ((window as any).electronAPI?.onOAuthCallback) {
-      console.log('🎧 Setting up Electron OAuth callback listener');
-      (window as any).electronAPI.onOAuthCallback(async (callbackData: string) => {
-        console.log('📨 Received OAuth callback from Electron:', callbackData);
-
-        // Check if it's an authorization code (starts with code=)
-        const params = new URLSearchParams(callbackData);
-        const code = params.get('code');
-        const error = params.get('error');
-
-        if (error) {
-          console.error('❌ OAuth error:', error);
-          alert(`Authentication error: ${error}`);
-          return;
-        }
-
-        if (code) {
-          console.log('🔑 Authorization code received, exchanging for token...');
-          try {
-            const accessToken = await exchangeCodeForToken(code);
-            localStorage.setItem('spotify_access_token', accessToken);
-            setIsAuthenticated(true);
-            console.log('✅ Authentication successful!');
-          } catch (error) {
-            console.error('❌ Failed to exchange code for token:', error);
-            alert('Authentication failed. Please try again.');
-          }
-        } else {
-          // Fallback: Check for access token (old implicit flow)
-          const token = params.get('access_token');
-          if (token) {
-            localStorage.setItem('spotify_access_token', token);
-            setIsAuthenticated(true);
-            console.log('✅ Authentication successful!');
-          } else {
-            console.error('❌ No authorization code or access token in callback');
-          }
-        }
-      });
-    } else {
-      console.log('⚠️ Not running in Electron or electronAPI not available');
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
-  const handleLogin = async () => {
-    const authUrl = await getAuthUrl();
-    console.log('🚀 Starting OAuth flow with URL:', authUrl);
-
-    // If running in Electron, open in external browser
-    if ((window as any).electronAPI?.openExternal) {
-      console.log('💻 Running in Electron, opening external browser');
-      (window as any).electronAPI.openExternal(authUrl);
-    } else {
-      // Browser mode - redirect normally
-      console.log('🌐 Running in browser, redirecting');
-      window.location.href = authUrl;
-    }
-  };
-
-  const handleLogout = async () => {
-    localStorage.removeItem('spotify_access_token');
-    await clearUnifiedCache();
-    setIsAuthenticated(false);
-    setReleases([]);
-    setLastUpdated(null);
-  };
-
-  const handleRefreshArtists = async () => {
-    if (loading) {
-      console.log('Import already in progress, ignoring refresh request');
-      return;
-    }
-
-    const token = localStorage.getItem('spotify_access_token');
-    if (token && isAuthenticated) {
-      await clearUnifiedCache();
-      fetchReleases(token);
-    }
-  };
-
-
-  const handleInitialFetch = () => {
-    // Prevent concurrent operations
-    if (loading) {
-      console.log('Import already in progress, ignoring request');
-      return;
-    }
-    
-    const token = localStorage.getItem('spotify_access_token');
-    console.log('🎵 handleInitialFetch called');
-    console.log('Token exists:', !!token);
-    console.log('Is authenticated:', isAuthenticated);
-    
-    if (token && isAuthenticated) {
-      fetchReleases(token);
-    } else {
-      console.error('Missing token or not authenticated');
-    }
-  };
-
-
-  const fetchReleases = useCallback(async (accessToken: string) => {
-    // Cancel any existing fetch
+  const fetchReleases = useCallback(async () => {
     if (abortControllerRef.current) {
       abortControllerRef.current.abort();
     }
@@ -192,18 +63,15 @@ function App() {
     try {
       setLoading(true);
       setLoadingProgress({ current: 0, total: 0, newReleases: 0 });
-      
+
       console.log('🔄 Fetching releases using unified API...');
-      
-      const releases = await getNewReleasesUnified(
-        accessToken,
-        (current, total, newReleasesCount) => {
-          if (!newAbortController.signal.aborted) {
-            setLoadingProgress({ current, total, newReleases: newReleasesCount });
-          }
+
+      const releases = await getNewReleasesUnified((current, total, newReleasesCount) => {
+        if (!newAbortController.signal.aborted) {
+          setLoadingProgress({ current, total, newReleases: newReleasesCount });
         }
-      );
-      
+      });
+
       if (!newAbortController.signal.aborted) {
         setReleases(releases);
         setLastUpdated(Date.now());
@@ -212,6 +80,10 @@ function App() {
     } catch (error: any) {
       if (error.name === 'AbortError') {
         console.log('Fetch was cancelled');
+        return;
+      }
+      if (error.message === 'AUTH_EXPIRED') {
+        console.warn('Auth expired during fetch — user must re-authenticate');
         return;
       }
       console.error('Error fetching releases:', error);
@@ -225,28 +97,138 @@ function App() {
   }, []);
 
   useEffect(() => {
-    const hydrate = async () => {
-      const token = localStorage.getItem('spotify_access_token');
-      if (token) {
-        setIsAuthenticated(true);
-        const cached = await getCachedData();
-        if (cached?.releases?.length) {
-          setReleases(cached.releases);
-        }
-        if (cached?.timestamp) {
-          setLastUpdated(cached.timestamp);
-        }
+    const init = async () => {
+      await authManager.hydrate();
+      setIsAuthenticated(authManager.isAuthenticated());
+
+      const cached = await getCachedData();
+      if (cached?.releases?.length) {
+        setReleases(cached.releases);
+      }
+      if (cached?.timestamp) {
+        setLastUpdated(cached.timestamp);
       }
       setHydrated(true);
     };
-    hydrate();
+    init();
+
+    const unsubscribe = authManager.onChange(authed => {
+      setIsAuthenticated(authed);
+      if (!authed) {
+        setReleases([]);
+        setLastUpdated(null);
+      }
+    });
 
     return () => {
+      unsubscribe();
       if (abortControllerRef.current) {
         abortControllerRef.current.abort();
       }
     };
   }, []);
+
+  useEffect(() => {
+    const handleTokens = async (tokens: SpotifyTokens) => {
+      await authManager.setTokens(tokens);
+    };
+
+    const consumeBrowserCallback = async () => {
+      const authCode = getAuthorizationCodeFromUrl();
+      if (authCode) {
+        console.log('🔑 Authorization code received, exchanging for token...');
+        try {
+          const tokens = await exchangeCodeForToken(authCode);
+          await handleTokens(tokens);
+          console.log('✅ Authentication successful!');
+          window.history.replaceState({}, document.title, window.location.pathname);
+        } catch (error) {
+          console.error('❌ Failed to exchange code for token:', error);
+          alert('Authentication failed. Please try again.');
+        }
+        return;
+      }
+
+      // Backward-compat for the old implicit grant fragment.
+      const accessToken = getAccessTokenFromUrl();
+      if (accessToken) {
+        console.warn('Received legacy implicit-grant token; refresh-token flow is preferred — please re-authenticate');
+        window.history.replaceState({}, document.title, window.location.pathname);
+      }
+    };
+
+    consumeBrowserCallback();
+
+    const electronAPI = (window as any).electronAPI;
+    if (electronAPI?.onOAuthCallback) {
+      console.log('🎧 Setting up Electron OAuth callback listener');
+      electronAPI.onOAuthCallback(async (callbackData: string) => {
+        console.log('📨 Received OAuth callback from Electron');
+        const params = new URLSearchParams(callbackData);
+        const code = params.get('code');
+        const errorParam = params.get('error');
+
+        if (errorParam) {
+          console.error('❌ OAuth error:', errorParam);
+          alert(`Authentication error: ${errorParam}`);
+          return;
+        }
+
+        if (!code) {
+          console.error('❌ No authorization code in callback');
+          return;
+        }
+
+        try {
+          const tokens = await exchangeCodeForToken(code);
+          await handleTokens(tokens);
+          console.log('✅ Authentication successful!');
+        } catch (error) {
+          console.error('❌ Failed to exchange code for token:', error);
+          alert('Authentication failed. Please try again.');
+        }
+      });
+    } else {
+      console.log('⚠️ Not running in Electron or electronAPI not available');
+    }
+  }, []);
+
+  const handleLogin = async () => {
+    const authUrl = await getAuthUrl();
+    console.log('🚀 Starting OAuth flow with URL:', authUrl);
+
+    if ((window as any).electronAPI?.openExternal) {
+      console.log('💻 Running in Electron, opening external browser');
+      (window as any).electronAPI.openExternal(authUrl);
+    } else {
+      console.log('🌐 Running in browser, redirecting');
+      window.location.href = authUrl;
+    }
+  };
+
+  const handleLogout = async () => {
+    await authManager.logout();
+    await clearUnifiedCache();
+    setReleases([]);
+    setLastUpdated(null);
+  };
+
+  const handleRefreshArtists = async () => {
+    if (loading) {
+      console.log('Refresh already in progress, ignoring');
+      return;
+    }
+    if (!isAuthenticated) return;
+
+    await clearUnifiedCache();
+    fetchReleases();
+  };
+
+  const handleInitialFetch = () => {
+    if (loading) return;
+    if (!isAuthenticated) return;
+    fetchReleases();
+  };
 
   const handleReleaseClick = (spotifyUrl: string) => {
     window.open(spotifyUrl, '_blank');
@@ -255,11 +237,10 @@ function App() {
   const filteredAndSortedReleases = useMemo(() => {
     return releases
       .filter(release => {
-        // Filter by date range
         const releaseDate = new Date(release.releaseDate);
         const now = new Date();
         let dateMatch = false;
-        
+
         switch (filter) {
           case 'today':
             dateMatch = releaseDate.toDateString() === now.toDateString();
@@ -279,8 +260,6 @@ function App() {
           default:
             dateMatch = true;
         }
-        
-        
         return dateMatch;
       })
       .sort((a, b) => {
@@ -296,10 +275,10 @@ function App() {
     return (
       <main className="login-container">
         <div className="login">
-          <img 
-            className="logo" 
+          <img
+            className="logo"
             src="./numu-logo-white.svg"
-            alt="NUMU Logo" 
+            alt="NUMU Logo"
             onClick={handleLogin}
             data-testid="login-logo"
           />
@@ -318,7 +297,7 @@ function App() {
         <div>
           <h3>DURATION</h3>
           <ul>
-            <li 
+            <li
               className={filter === 'today' ? 'active' : ''}
               onClick={() => setFilter('today')}
               data-testid="filter-today"
@@ -333,7 +312,7 @@ function App() {
                 </span>
               )}
             </li>
-            <li 
+            <li
               className={filter === '7days' ? 'active' : ''}
               onClick={() => setFilter('7days')}
               data-testid="filter-7days"
@@ -349,7 +328,7 @@ function App() {
                 </span>
               )}
             </li>
-            <li 
+            <li
               className={filter === '90days' ? 'active' : ''}
               onClick={() => setFilter('90days')}
             >
@@ -364,7 +343,7 @@ function App() {
                 </span>
               )}
             </li>
-            <li 
+            <li
               className={filter === '6months' ? 'active' : ''}
               onClick={() => setFilter('6months')}
             >
@@ -378,14 +357,14 @@ function App() {
         <div>
           <h3>ORDER</h3>
           <ul>
-            <li 
+            <li
               className={sort === 'releaseDate' ? 'active' : ''}
               onClick={() => setSort('releaseDate')}
               data-testid="sort-recent"
             >
               RECENT
             </li>
-            <li 
+            <li
               className={sort === 'artist' ? 'active' : ''}
               onClick={() => setSort('artist')}
               data-testid="sort-artist"
@@ -395,8 +374,8 @@ function App() {
           </ul>
         </div>
         <div>
-          <h3 
-            className="clickable-button" 
+          <h3
+            className="clickable-button"
             onClick={handleLogout}
             data-testid="logout-button"
           >
@@ -418,7 +397,7 @@ function App() {
           )}
         </div>
       </nav>
-      
+
       <div className="content-container">
         <main className="content">
           {!hydrated ? (
@@ -453,8 +432,8 @@ function App() {
             <div className="initial-fetch-container">
               <div className="initial-fetch">
                 <p>Click the button below to scan your followed artists for new releases.</p>
-                <button 
-                  className="import-button" 
+                <button
+                  className="import-button"
                   onClick={handleInitialFetch}
                   data-testid="import-artists-button"
                 >
@@ -466,8 +445,8 @@ function App() {
             <div className="no-releases">No new releases found for the selected time period.</div>
           ) : (
             filteredAndSortedReleases.map(release => (
-              <div 
-                key={release.id} 
+              <div
+                key={release.id}
                 className="release-card"
                 onClick={() => handleReleaseClick(release.spotifyUrl)}
                 data-testid="release-card"
@@ -483,9 +462,9 @@ function App() {
                   </div>
                   <div className="card-footer">
                     <span className="release-date">
-                      {new Date(release.releaseDate).toLocaleDateString('en-US', { 
-                        month: 'short', 
-                        day: 'numeric' 
+                      {new Date(release.releaseDate).toLocaleDateString('en-US', {
+                        month: 'short',
+                        day: 'numeric'
                       })}
                     </span>
                     <span className={`release-type ${release.type.toLowerCase()}`}>

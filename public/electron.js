@@ -1,4 +1,4 @@
-const { app, BrowserWindow, Menu, shell, dialog, ipcMain } = require('electron');
+const { app, BrowserWindow, Menu, shell, dialog, ipcMain, safeStorage } = require('electron');
 const path = require('path');
 const fs = require('fs');
 
@@ -318,4 +318,43 @@ ipcMain.handle('open-external', async (event, url) => {
 
 ipcMain.handle('get-version', () => {
   return app.getVersion();
+});
+
+// Secure storage IPC: encrypts via OS keychain when available; falls back to plaintext
+// in the same store.json (with a flag) when not. Stored values are JSON-serialised.
+ipcMain.handle('safe-storage-set', (event, key, value) => {
+  try {
+    const json = JSON.stringify(value);
+    if (safeStorage.isEncryptionAvailable()) {
+      const buf = safeStorage.encryptString(json);
+      store.set(key, { encrypted: true, data: buf.toString('base64') });
+    } else {
+      console.warn('safeStorage encryption unavailable; storing plaintext for', key);
+      store.set(key, { encrypted: false, data: value });
+    }
+    return true;
+  } catch (error) {
+    console.error('safe-storage-set failed:', error);
+    return false;
+  }
+});
+
+ipcMain.handle('safe-storage-get', (event, key) => {
+  try {
+    const raw = store.get(key);
+    if (!raw) return null;
+    if (raw.encrypted) {
+      const buf = Buffer.from(raw.data, 'base64');
+      return JSON.parse(safeStorage.decryptString(buf));
+    }
+    return raw.data;
+  } catch (error) {
+    console.error('safe-storage-get failed:', error);
+    return null;
+  }
+});
+
+ipcMain.handle('safe-storage-delete', (event, key) => {
+  store.delete(key);
+  return true;
 });

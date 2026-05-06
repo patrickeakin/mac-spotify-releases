@@ -1,6 +1,7 @@
-import axios from 'axios';
-import { SpotifyArtist, SpotifyAlbum, SpotifyUserProfile, UnifiedCacheData } from './types';
+import axios, { AxiosRequestConfig } from 'axios';
+import { SpotifyArtist, SpotifyAlbum, SpotifyTokens, SpotifyUserProfile, UnifiedCacheData } from './types';
 import { getCachedData, cacheData, hashArtistList } from './cache-manager';
+import { authManager } from './auth-manager';
 
 // Spotify configuration
 const CLIENT_ID = process.env.REACT_APP_SPOTIFY_CLIENT_ID || '';
@@ -82,7 +83,7 @@ export const getAccessTokenFromUrl = (): string | null => {
   return params.get('access_token');
 };
 
-export const exchangeCodeForToken = async (code: string): Promise<string> => {
+export const exchangeCodeForToken = async (code: string): Promise<SpotifyTokens> => {
   const codeVerifier = localStorage.getItem('pkce_code_verifier');
 
   if (!codeVerifier) {
@@ -106,40 +107,91 @@ export const exchangeCodeForToken = async (code: string): Promise<string> => {
       }
     });
 
-    // Clean up code verifier
     localStorage.removeItem('pkce_code_verifier');
 
     console.log('✅ Successfully exchanged code for token');
-    return response.data.access_token;
+    return {
+      accessToken: response.data.access_token,
+      refreshToken: response.data.refresh_token,
+      expiresIn: response.data.expires_in
+    };
   } catch (error: any) {
     console.error('❌ Error exchanging code for token:', error.response?.data || error);
     throw error;
   }
 };
 
-export const getUserProfile = async (accessToken: string): Promise<SpotifyUserProfile> => {
-  try {
-    const response = await axios.get('https://api.spotify.com/v1/me', {
-      headers: {
-        'Authorization': `Bearer ${accessToken}`
-      }
-    });
-    return {
-      id: response.data.id,
-      country: response.data.country || 'US'
-    };
-  } catch (error: any) {
-    if (error.response?.status === 401) {
-      console.warn('⚠️ OAuth token expired - authentication required');
-      throw new Error('AUTH_EXPIRED');
-    }
-    throw error;
-  }
+export const refreshAccessToken = async (refreshToken: string): Promise<SpotifyTokens> => {
+  const params = new URLSearchParams({
+    grant_type: 'refresh_token',
+    refresh_token: refreshToken,
+    client_id: CLIENT_ID
+  });
+
+  const response = await axios.post('https://accounts.spotify.com/api/token', params, {
+    headers: { 'Content-Type': 'application/x-www-form-urlencoded' }
+  });
+
+  return {
+    accessToken: response.data.access_token,
+    // Spotify rotates refresh tokens; keep the old one if a new one isn't returned.
+    refreshToken: response.data.refresh_token || refreshToken,
+    expiresIn: response.data.expires_in
+  };
 };
 
-export const getCurrentUser = async (accessToken: string): Promise<string> => {
+// Calls the Spotify Web API with an access token from authManager. On a 401 we
+// refresh once and retry; on a second 401 we surface AUTH_EXPIRED so the UI
+// can prompt re-auth.
+async function spotifyRequest<T>(config: AxiosRequestConfig): Promise<T> {
+  const attempt = async (token: string): Promise<T> => {
+    const response = await axios({
+      ...config,
+      headers: {
+        ...(config.headers || {}),
+        Authorization: `Bearer ${token}`
+      }
+    });
+    return response.data as T;
+  };
+
+  let token = await authManager.getAccessToken();
   try {
-    const profile = await getUserProfile(accessToken);
+    return await attempt(token);
+  } catch (error: any) {
+    if (error.response?.status !== 401) {
+      throw error;
+    }
+    try {
+      token = await authManager.refresh();
+    } catch {
+      throw new Error('AUTH_EXPIRED');
+    }
+    try {
+      return await attempt(token);
+    } catch (retryError: any) {
+      if (retryError.response?.status === 401) {
+        throw new Error('AUTH_EXPIRED');
+      }
+      throw retryError;
+    }
+  }
+}
+
+export const getUserProfile = async (): Promise<SpotifyUserProfile> => {
+  const data = await spotifyRequest<{ id: string; country?: string }>({
+    method: 'GET',
+    url: 'https://api.spotify.com/v1/me'
+  });
+  return {
+    id: data.id,
+    country: data.country || 'US'
+  };
+};
+
+export const getCurrentUser = async (): Promise<string> => {
+  try {
+    const profile = await getUserProfile();
     return profile.id;
   } catch (error: any) {
     if (error.message === 'AUTH_EXPIRED') {
@@ -152,7 +204,6 @@ export const getCurrentUser = async (accessToken: string): Promise<string> => {
 
 export const getArtistAlbums = async (
   artistId: string,
-  accessToken: string,
   market: string
 ): Promise<SpotifyAlbum[]> => {
   const albums: SpotifyAlbum[] = [];
@@ -162,11 +213,12 @@ export const getArtistAlbums = async (
 
   while (url) {
     try {
-      const response: any = await axios.get(url, {
-        headers: { 'Authorization': `Bearer ${accessToken}` }
+      const page: { items: SpotifyAlbum[]; next: string | null } = await spotifyRequest({
+        method: 'GET',
+        url
       });
-      albums.push(...response.data.items);
-      url = response.data.next;
+      albums.push(...page.items);
+      url = page.next;
     } catch (error: any) {
       if (error.response?.status === 429) {
         const retryAfter = error.response.headers['retry-after'];
@@ -175,8 +227,8 @@ export const getArtistAlbums = async (
         await new Promise(resolve => setTimeout(resolve, waitMs));
         continue;
       }
-      if (error.response?.status === 401) {
-        throw new Error('AUTH_EXPIRED');
+      if (error.message === 'AUTH_EXPIRED') {
+        throw error;
       }
       console.error(`Error fetching albums for artist ${artistId}:`, error.response?.status || error.message);
       return albums;
@@ -186,7 +238,7 @@ export const getArtistAlbums = async (
   return albums;
 };
 
-export const getFollowedArtists = async (accessToken: string, forceRefresh: boolean = false): Promise<SpotifyArtist[]> => {
+export const getFollowedArtists = async (forceRefresh: boolean = false): Promise<SpotifyArtist[]> => {
   if (!forceRefresh) {
     const cached = await getCachedData();
     if (cached && cached.followedArtists.length > 0) {
@@ -196,33 +248,30 @@ export const getFollowedArtists = async (accessToken: string, forceRefresh: bool
   }
 
   console.log('Fetching fresh followed artists from Spotify...');
-  
-  // Only get current user ID when we need to fetch fresh data
-  const currentUserId = await getCurrentUser(accessToken);
+
+  const currentUserId = await getCurrentUser();
   const artists: SpotifyArtist[] = [];
-  let url = 'https://api.spotify.com/v1/me/following?type=artist&limit=50';
+  let url: string | null = 'https://api.spotify.com/v1/me/following?type=artist&limit=50';
   let pageCount = 0;
-  
+
   while (url) {
     try {
-      const response = await axios.get(url, {
-        headers: {
-          'Authorization': `Bearer ${accessToken}`
-        }
+      const page: { artists: { items: any[]; next: string | null } } = await spotifyRequest({
+        method: 'GET',
+        url
       });
-      
-      const spotifyArtists = response.data.artists.items.map((artist: any) => ({
+
+      const spotifyArtists = page.artists.items.map((artist: any) => ({
         id: artist.id,
         name: artist.name
       }));
-      
+
       artists.push(...spotifyArtists);
-      url = response.data.artists.next;
+      url = page.artists.next;
       pageCount++;
-      
+
       console.log(`Fetched page ${pageCount}, total artists: ${artists.length}`);
-      
-      // Conservative delay between pages
+
       if (url) {
         await new Promise(resolve => setTimeout(resolve, 2000));
       }
@@ -232,6 +281,8 @@ export const getFollowedArtists = async (accessToken: string, forceRefresh: bool
         const waitTime = retryAfter ? parseInt(retryAfter) * 1000 + 2000 : 10000;
         console.warn(`Rate limited while fetching artists page ${pageCount}. Waiting ${waitTime}ms...`);
         await new Promise(resolve => setTimeout(resolve, waitTime));
+      } else if (error.message === 'AUTH_EXPIRED') {
+        throw error;
       } else {
         console.error('Error fetching followed artists:', error);
         break;
