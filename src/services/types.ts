@@ -5,6 +5,29 @@ export interface SpotifyArtist {
   name: string;
 }
 
+export interface SpotifyUserProfile {
+  id: string;
+  country: string;
+}
+
+export interface SpotifyAlbumImage {
+  url: string;
+  height?: number;
+  width?: number;
+}
+
+export interface SpotifyAlbum {
+  id: string;
+  name: string;
+  album_type: 'album' | 'single' | 'compilation';
+  album_group?: 'album' | 'single' | 'compilation' | 'appears_on';
+  release_date: string;
+  release_date_precision: 'year' | 'month' | 'day';
+  images: SpotifyAlbumImage[];
+  external_urls: { spotify: string };
+  artists: Array<{ id: string; name: string }>;
+}
+
 export interface MusicBrainzRelease {
   id: string;
   title: string;

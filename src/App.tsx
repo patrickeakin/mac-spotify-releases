@@ -472,13 +472,10 @@ function App() {
                 onClick={() => handleReleaseClick(release.spotifyUrl)}
                 data-testid="release-card"
               >
-                <CoverArt 
+                <CoverArt
                   imageUrl={release.image}
                   altText={`${release.name} by ${release.artist}`}
                 />
-                <div className="api-indicator musicbrainz">
-                  MB
-                </div>
                 <div className="card-metadata">
                   <div className="card-header">
                     <h3 className="artist-name">{release.artist}</h3>

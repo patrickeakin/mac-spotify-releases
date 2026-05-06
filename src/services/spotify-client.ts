@@ -1,5 +1,5 @@
 import axios from 'axios';
-import { SpotifyArtist, UnifiedCacheData } from './types';
+import { SpotifyArtist, SpotifyAlbum, SpotifyUserProfile, UnifiedCacheData } from './types';
 import { getCachedData, cacheData, hashArtistList } from './cache-manager';
 
 // Spotify configuration
@@ -117,22 +117,73 @@ export const exchangeCodeForToken = async (code: string): Promise<string> => {
   }
 };
 
-export const getCurrentUser = async (accessToken: string): Promise<string> => {
+export const getUserProfile = async (accessToken: string): Promise<SpotifyUserProfile> => {
   try {
     const response = await axios.get('https://api.spotify.com/v1/me', {
       headers: {
         'Authorization': `Bearer ${accessToken}`
       }
     });
-    return response.data.id;
+    return {
+      id: response.data.id,
+      country: response.data.country || 'US'
+    };
   } catch (error: any) {
     if (error.response?.status === 401) {
       console.warn('⚠️ OAuth token expired - authentication required');
       throw new Error('AUTH_EXPIRED');
     }
+    throw error;
+  }
+};
+
+export const getCurrentUser = async (accessToken: string): Promise<string> => {
+  try {
+    const profile = await getUserProfile(accessToken);
+    return profile.id;
+  } catch (error: any) {
+    if (error.message === 'AUTH_EXPIRED') {
+      throw error;
+    }
     console.error('Error getting user info:', error);
     return 'unknown';
   }
+};
+
+export const getArtistAlbums = async (
+  artistId: string,
+  accessToken: string,
+  market: string
+): Promise<SpotifyAlbum[]> => {
+  const albums: SpotifyAlbum[] = [];
+  let url: string | null =
+    `https://api.spotify.com/v1/artists/${artistId}/albums` +
+    `?include_groups=album,single,compilation&limit=50&market=${market}`;
+
+  while (url) {
+    try {
+      const response: any = await axios.get(url, {
+        headers: { 'Authorization': `Bearer ${accessToken}` }
+      });
+      albums.push(...response.data.items);
+      url = response.data.next;
+    } catch (error: any) {
+      if (error.response?.status === 429) {
+        const retryAfter = error.response.headers['retry-after'];
+        const waitMs = (retryAfter ? parseInt(retryAfter, 10) : 1) * 1000 + 500;
+        console.warn(`Spotify rate-limited on artist ${artistId}, waiting ${waitMs}ms`);
+        await new Promise(resolve => setTimeout(resolve, waitMs));
+        continue;
+      }
+      if (error.response?.status === 401) {
+        throw new Error('AUTH_EXPIRED');
+      }
+      console.error(`Error fetching albums for artist ${artistId}:`, error.response?.status || error.message);
+      return albums;
+    }
+  }
+
+  return albums;
 };
 
 export const getFollowedArtists = async (accessToken: string, forceRefresh: boolean = false): Promise<SpotifyArtist[]> => {
