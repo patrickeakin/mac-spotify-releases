@@ -1,7 +1,20 @@
 import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import './App.css';
-import { getAuthUrl, getAccessTokenFromUrl, getAuthorizationCodeFromUrl, exchangeCodeForToken, getNewReleasesUnified, clearUnifiedCache } from './services';
+import { getAuthUrl, getAccessTokenFromUrl, getAuthorizationCodeFromUrl, exchangeCodeForToken, getNewReleasesUnified, clearUnifiedCache, getCachedData } from './services';
 import { CoverArt } from './components';
+
+const formatRelativeTime = (timestamp: number): string => {
+  const diff = Date.now() - timestamp;
+  const minutes = Math.floor(diff / 60_000);
+  const hours = Math.floor(diff / 3_600_000);
+  const days = Math.floor(diff / 86_400_000);
+
+  if (minutes < 1) return 'just now';
+  if (minutes < 60) return `${minutes} minute${minutes === 1 ? '' : 's'} ago`;
+  if (hours < 24) return `${hours} hour${hours === 1 ? '' : 's'} ago`;
+  if (days < 7) return `${days} day${days === 1 ? '' : 's'} ago`;
+  return new Date(timestamp).toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+};
 
 interface Release {
   id: string;
@@ -25,6 +38,8 @@ function App() {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [loading, setLoading] = useState(false);
   const [loadingProgress, setLoadingProgress] = useState({ current: 0, total: 0, newReleases: 0 });
+  const [hydrated, setHydrated] = useState(false);
+  const [lastUpdated, setLastUpdated] = useState<number | null>(null);
   const abortControllerRef = useRef<AbortController | null>(null);
 
   useEffect(() => {
@@ -123,24 +138,23 @@ function App() {
     }
   };
 
-  const handleLogout = () => {
+  const handleLogout = async () => {
     localStorage.removeItem('spotify_access_token');
-    clearUnifiedCache(); // Clear unified cache on logout
+    await clearUnifiedCache();
     setIsAuthenticated(false);
     setReleases([]);
+    setLastUpdated(null);
   };
 
-  const handleRefreshArtists = () => {
-    // Prevent concurrent operations
+  const handleRefreshArtists = async () => {
     if (loading) {
       console.log('Import already in progress, ignoring refresh request');
       return;
     }
-    
+
     const token = localStorage.getItem('spotify_access_token');
     if (token && isAuthenticated) {
-      // Clear cache to force fresh fetch
-      clearUnifiedCache();
+      await clearUnifiedCache();
       fetchReleases(token);
     }
   };
@@ -192,6 +206,7 @@ function App() {
       
       if (!newAbortController.signal.aborted) {
         setReleases(releases);
+        setLastUpdated(Date.now());
         console.log(`✅ Successfully loaded ${releases.length} releases`);
       }
     } catch (error: any) {
@@ -210,13 +225,22 @@ function App() {
   }, []);
 
   useEffect(() => {
-    const token = localStorage.getItem('spotify_access_token');
-    if (token) {
-      setIsAuthenticated(true);
-      // Don't automatically fetch releases - wait for user to click button
-    }
-    
-    // Cleanup function to cancel ongoing requests
+    const hydrate = async () => {
+      const token = localStorage.getItem('spotify_access_token');
+      if (token) {
+        setIsAuthenticated(true);
+        const cached = await getCachedData();
+        if (cached?.releases?.length) {
+          setReleases(cached.releases);
+        }
+        if (cached?.timestamp) {
+          setLastUpdated(cached.timestamp);
+        }
+      }
+      setHydrated(true);
+    };
+    hydrate();
+
     return () => {
       if (abortControllerRef.current) {
         abortControllerRef.current.abort();
@@ -380,19 +404,28 @@ function App() {
           </h3>
         </div>
         <div>
-          <h3 
-            className="clickable-button" 
+          <h3
+            className="clickable-button"
             onClick={handleRefreshArtists}
             data-testid="refresh-artists-button"
           >
-            REFRESH ARTISTS
+            REFRESH
           </h3>
+          {lastUpdated && (
+            <p className="last-updated" data-testid="last-updated">
+              Updated {formatRelativeTime(lastUpdated)}
+            </p>
+          )}
         </div>
       </nav>
       
       <div className="content-container">
         <main className="content">
-          {loading ? (
+          {!hydrated ? (
+            <div className="loading">
+              <div className="loading-text">Loading…</div>
+            </div>
+          ) : loading ? (
             <div className="loading">
               {loadingProgress.total > 0 ? (
                 <div className="loading-progress">
@@ -404,7 +437,7 @@ function App() {
                     Found {loadingProgress.newReleases} new releases so far
                   </div>
                   <div className="progress-bar-container">
-                    <div 
+                    <div
                       className="progress-bar"
                       style={{
                         width: `${(loadingProgress.current / loadingProgress.total) * 100}%`

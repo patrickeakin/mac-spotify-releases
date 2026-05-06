@@ -136,19 +136,14 @@ export const getCurrentUser = async (accessToken: string): Promise<string> => {
 };
 
 export const getFollowedArtists = async (accessToken: string, forceRefresh: boolean = false): Promise<SpotifyArtist[]> => {
-  // Try to use cached data first (unless forcing refresh)
   if (!forceRefresh) {
-    const cached = getCachedData();
+    const cached = await getCachedData();
     if (cached && cached.followedArtists.length > 0) {
-      // Check if artists cache is less than 24 hours old
-      const twentyFourHours = 24 * 60 * 60 * 1000;
-      if (Date.now() - cached.artistsFetchedAt < twentyFourHours) {
-        console.log(`Using cached artists: ${cached.followedArtists.length} artists from ${new Date(cached.artistsFetchedAt).toLocaleString()}`);
-        return cached.followedArtists;
-      }
+      console.log(`Using cached artists: ${cached.followedArtists.length} artists from ${new Date(cached.artistsFetchedAt).toLocaleString()}`);
+      return cached.followedArtists;
     }
   }
-  
+
   console.log('Fetching fresh followed artists from Spotify...');
   
   // Only get current user ID when we need to fetch fresh data
@@ -193,17 +188,14 @@ export const getFollowedArtists = async (accessToken: string, forceRefresh: bool
     }
   }
   
-  // Cache the results if we got actual artists
   if (artists.length > 0) {
-    // Update cache with new artists data
-    const existingCache = getCachedData();
+    const existingCache = await getCachedData();
     if (existingCache) {
       existingCache.followedArtists = artists;
       existingCache.artistsFetchedAt = Date.now();
       existingCache.userId = currentUserId;
-      cacheData(existingCache);
+      await cacheData(existingCache);
     } else {
-      // Create minimal cache entry with just artists data
       const basicCache: UnifiedCacheData = {
         followedArtists: artists,
         artistsFetchedAt: Date.now(),
@@ -215,7 +207,7 @@ export const getFollowedArtists = async (accessToken: string, forceRefresh: bool
         userId: currentUserId,
         artistListHash: hashArtistList(artists)
       };
-      cacheData(basicCache);
+      await cacheData(basicCache);
     }
     console.log(`Cached ${artists.length} followed artists`);
   }

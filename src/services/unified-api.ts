@@ -10,7 +10,7 @@ export const getNewReleasesUnified = async (
   onProgress?: (current: number, total: number, newReleases: number) => void
 ): Promise<FormattedRelease[]> => {
   // Check cache first - if we have complete cached data, use it immediately
-  const cachedData = getCachedData();
+  const cachedData = await getCachedData();
   if (cachedData && cachedData.isComplete) {
     console.log(`Using complete cached releases: ${cachedData.releases.length} releases from ${new Date(cachedData.timestamp).toLocaleString()}`);
     if (onProgress) {
@@ -110,7 +110,7 @@ export const getNewReleasesUnified = async (
           userId: currentUserId,
           artistListHash
         };
-        cacheData(tempCacheData);
+        await cacheData(tempCacheData);
       }
       
     } catch (error: any) {
@@ -143,8 +143,8 @@ export const getNewReleasesUnified = async (
     userId: currentUserId,
     artistListHash
   };
-  cacheData(finalCacheData);
-  
+  await cacheData(finalCacheData);
+
   console.log(`Processing complete: ${finalReleases.length} unique releases from ${followedArtists.length} artists`);
   return finalReleases;
 };
