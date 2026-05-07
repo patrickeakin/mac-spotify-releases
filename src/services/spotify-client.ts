@@ -1,6 +1,6 @@
 import axios, { AxiosRequestConfig } from 'axios';
 import { SpotifyArtist, SpotifyAlbum, SpotifyTokens, SpotifyUserProfile, UnifiedCacheData } from './types';
-import { getCachedData, cacheData, hashArtistList } from './cache-manager';
+import { getCachedData, cacheData } from './cache-manager';
 import { authManager } from './auth-manager';
 
 // Spotify configuration
@@ -306,8 +306,7 @@ export const getFollowedArtists = async (forceRefresh: boolean = false): Promise
         totalArtists: artists.length,
         isComplete: false,
         timestamp: Date.now(),
-        userId: currentUserId,
-        artistListHash: hashArtistList(artists)
+        userId: currentUserId
       };
       await cacheData(basicCache);
     }

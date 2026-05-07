@@ -1,12 +1,7 @@
-import { UnifiedCacheData, SpotifyArtist } from './types';
+import { UnifiedCacheData } from './types';
 import { storage } from './electron-storage';
 
 const CACHE_KEY = 'unified_releases_cache';
-
-export const hashArtistList = (artists: SpotifyArtist[]): string => {
-  const sortedIds = artists.map(a => a.id).sort();
-  return btoa(sortedIds.join(',')).substring(0, 16);
-};
 
 export const getCachedData = async (): Promise<UnifiedCacheData | null> => {
   try {

@@ -1,7 +1,7 @@
 import { FormattedRelease, UnifiedCacheData } from './types';
 import { getUserProfile, getFollowedArtists } from './spotify-client';
 import { getNewReleasesFromSpotify } from './spotify-releases';
-import { getCachedData, cacheData, hashArtistList } from './cache-manager';
+import { getCachedData, cacheData } from './cache-manager';
 
 export const getNewReleasesUnified = async (
   onProgress?: (current: number, total: number, newReleases: number) => void
@@ -39,8 +39,7 @@ export const getNewReleasesUnified = async (
     totalArtists: followedArtists.length,
     isComplete: true,
     timestamp: Date.now(),
-    userId: profile.id,
-    artistListHash: hashArtistList(followedArtists)
+    userId: profile.id
   };
   await cacheData(cacheEntry);
 

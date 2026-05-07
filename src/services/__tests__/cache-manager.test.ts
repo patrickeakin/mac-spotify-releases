@@ -22,7 +22,6 @@ const buildFixture = (overrides: Partial<UnifiedCacheData> = {}): UnifiedCacheDa
   isComplete: true,
   timestamp: 2_000,
   userId: 'user-1',
-  artistListHash: 'hash-1',
   ...overrides,
 });
 

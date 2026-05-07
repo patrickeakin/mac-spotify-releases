@@ -91,7 +91,9 @@ function createWindow() {
   // Show window when ready to prevent visual flash
   mainWindow.once('ready-to-show', () => {
     mainWindow.show();
-    mainWindow.webContents.openDevTools(); // Open DevTools to debug
+    if (isDev) {
+      mainWindow.webContents.openDevTools();
+    }
   });
 
   // Log any errors
