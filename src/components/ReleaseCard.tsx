@@ -1,6 +1,7 @@
 import React from 'react';
 import { CoverArt } from './CoverArt';
 import { FormattedRelease } from '../services/types';
+import { parseReleaseDate } from '../lib/dates';
 
 interface ReleaseCardProps {
   release: FormattedRelease;
@@ -24,7 +25,7 @@ export const ReleaseCard: React.FC<ReleaseCardProps> = ({ release, onClick }) =>
       </div>
       <div className="card-footer">
         <span className="release-date">
-          {new Date(release.releaseDate).toLocaleDateString('en-US', {
+          {parseReleaseDate(release.releaseDate).toLocaleDateString('en-US', {
             month: 'short',
             day: 'numeric',
           })}

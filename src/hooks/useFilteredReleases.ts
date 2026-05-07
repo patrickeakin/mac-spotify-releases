@@ -1,6 +1,7 @@
 import { useMemo } from 'react';
 import { FormattedRelease } from '../services/types';
 import { FilterType, SortType } from '../components/Sidebar';
+import { parseReleaseDate } from '../lib/dates';
 
 const DAYS = {
   '7days': 7,
@@ -16,7 +17,7 @@ export function useFilteredReleases(
   return useMemo(() => {
     const now = new Date();
     const matchesFilter = (release: FormattedRelease) => {
-      const releaseDate = new Date(release.releaseDate);
+      const releaseDate = parseReleaseDate(release.releaseDate);
       if (filter === 'today') {
         return releaseDate.toDateString() === now.toDateString();
       }
@@ -28,7 +29,7 @@ export function useFilteredReleases(
       .filter(matchesFilter)
       .sort((a, b) => {
         if (sort === 'artist') return a.artist.localeCompare(b.artist);
-        return new Date(b.releaseDate).getTime() - new Date(a.releaseDate).getTime();
+        return parseReleaseDate(b.releaseDate).getTime() - parseReleaseDate(a.releaseDate).getTime();
       });
   }, [releases, filter, sort]);
 }

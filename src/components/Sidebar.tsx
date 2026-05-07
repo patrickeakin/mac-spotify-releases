@@ -1,5 +1,6 @@
 import React from 'react';
 import { FormattedRelease } from '../services/types';
+import { parseReleaseDate } from '../lib/dates';
 
 export type FilterType = 'today' | '7days' | '90days' | '6months';
 export type SortType = 'artist' | 'releaseDate';
@@ -30,12 +31,12 @@ const formatRelativeTime = (timestamp: number): string => {
 
 const countWithin = (releases: FormattedRelease[], days: number): number => {
   const cutoff = Date.now() - days * 24 * 60 * 60 * 1000;
-  return releases.filter(r => new Date(r.releaseDate).getTime() >= cutoff).length;
+  return releases.filter(r => parseReleaseDate(r.releaseDate).getTime() >= cutoff).length;
 };
 
 const countToday = (releases: FormattedRelease[]): number => {
   const today = new Date().toDateString();
-  return releases.filter(r => new Date(r.releaseDate).toDateString() === today).length;
+  return releases.filter(r => parseReleaseDate(r.releaseDate).toDateString() === today).length;
 };
 
 export const Sidebar: React.FC<SidebarProps> = ({
