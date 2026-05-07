@@ -1,13 +1,14 @@
+import type { MockedFunction } from 'vitest';
 import { getNewReleasesFromSpotify } from '../spotify-releases';
 import { SpotifyAlbum, SpotifyArtist, FormattedRelease } from '../types';
 
-jest.mock('../spotify-client', () => ({
-  getArtistAlbums: jest.fn(),
+vi.mock('../spotify-client', () => ({
+  getArtistAlbums: vi.fn(),
 }));
 
 import { getArtistAlbums } from '../spotify-client';
 
-const mockGetArtistAlbums = getArtistAlbums as jest.MockedFunction<typeof getArtistAlbums>;
+const mockGetArtistAlbums = getArtistAlbums as MockedFunction<typeof getArtistAlbums>;
 
 const FIXED_NOW = new Date('2026-05-01T00:00:00Z');
 

@@ -1,35 +1,37 @@
-jest.mock('../electron-storage', () => ({
+import type { Mock, MockedFunction } from 'vitest';
+
+vi.mock('../electron-storage', () => ({
   secureStorage: {
-    get: jest.fn(),
-    set: jest.fn(),
-    delete: jest.fn(),
+    get: vi.fn(),
+    set: vi.fn(),
+    delete: vi.fn(),
   },
   storage: {
-    get: jest.fn(),
-    set: jest.fn(),
-    delete: jest.fn(),
-    clear: jest.fn(),
+    get: vi.fn(),
+    set: vi.fn(),
+    delete: vi.fn(),
+    clear: vi.fn(),
   },
 }));
 
-jest.mock('../spotify-client', () => ({
-  refreshAccessToken: jest.fn(),
+vi.mock('../spotify-client', () => ({
+  refreshAccessToken: vi.fn(),
 }));
 
 import { AuthManager } from '../auth-manager';
 import { secureStorage } from '../electron-storage';
 import { refreshAccessToken } from '../spotify-client';
 
-const mockedRefresh = refreshAccessToken as jest.MockedFunction<typeof refreshAccessToken>;
-const mockedGet = secureStorage.get as jest.Mock;
-const mockedSet = secureStorage.set as jest.Mock;
-const mockedDelete = secureStorage.delete as jest.Mock;
+const mockedRefresh = refreshAccessToken as MockedFunction<typeof refreshAccessToken>;
+const mockedGet = secureStorage.get as Mock;
+const mockedSet = secureStorage.set as Mock;
+const mockedDelete = secureStorage.delete as Mock;
 
 describe('AuthManager', () => {
   let store: Map<string, unknown>;
 
   beforeEach(() => {
-    jest.useFakeTimers().setSystemTime(new Date('2026-05-01T12:00:00Z').getTime());
+    vi.useFakeTimers().setSystemTime(new Date('2026-05-01T12:00:00Z').getTime());
     store = new Map();
     mockedGet.mockReset().mockImplementation(async (key: string) => store.get(key) ?? null);
     mockedSet.mockReset().mockImplementation(async (key: string, value: unknown) => { store.set(key, value); });
@@ -38,7 +40,7 @@ describe('AuthManager', () => {
   });
 
   afterEach(() => {
-    jest.useRealTimers();
+    vi.useRealTimers();
   });
 
   it('hydrate is a no-op when no token is stored', async () => {
@@ -158,12 +160,10 @@ describe('AuthManager', () => {
     const events: boolean[] = [];
     mgr.onChange(authed => events.push(authed));
 
-    // Network error (no response) should not log out
     mockedRefresh.mockRejectedValueOnce(new Error('Network Error'));
     await expect(mgr.refresh()).rejects.toThrow('Network Error');
     expect(mgr.isAuthenticated()).toBe(true);
 
-    // 5xx server error should not log out either
     const serverError = Object.assign(new Error('server'), {
       response: { status: 503 },
     });
@@ -171,7 +171,6 @@ describe('AuthManager', () => {
     await expect(mgr.refresh()).rejects.toThrow('server');
     expect(mgr.isAuthenticated()).toBe(true);
 
-    // No listener notifications should have fired
     expect(events).toEqual([]);
   });
 });

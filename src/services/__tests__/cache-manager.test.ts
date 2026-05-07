@@ -32,16 +32,16 @@ describe('cache-manager (Electron IPC path)', () => {
     store = new Map();
     (window as any).electronAPI = {
       store: {
-        get: jest.fn((key: string) => Promise.resolve(store.get(key))),
-        set: jest.fn((key: string, value: unknown) => {
+        get: vi.fn((key: string) => Promise.resolve(store.get(key))),
+        set: vi.fn((key: string, value: unknown) => {
           store.set(key, value);
           return Promise.resolve(true);
         }),
-        delete: jest.fn((key: string) => {
+        delete: vi.fn((key: string) => {
           store.delete(key);
           return Promise.resolve(true);
         }),
-        clear: jest.fn(() => {
+        clear: vi.fn(() => {
           store.clear();
           return Promise.resolve(true);
         }),

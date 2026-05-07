@@ -4,11 +4,11 @@ import { getCachedData, cacheData } from './cache-manager';
 import { authManager } from './auth-manager';
 
 // Spotify configuration
-const CLIENT_ID = process.env.REACT_APP_SPOTIFY_CLIENT_ID || '';
+const CLIENT_ID = import.meta.env.VITE_SPOTIFY_CLIENT_ID || '';
 // Use custom protocol for Electron, localhost for browser
 const REDIRECT_URI = (window as any).electronAPI
   ? 'numu://callback'
-  : (process.env.REACT_APP_SPOTIFY_REDIRECT_URI || 'http://localhost:3000');
+  : (import.meta.env.VITE_SPOTIFY_REDIRECT_URI || 'http://localhost:3001');
 const SCOPES = 'user-follow-read';
 
 // PKCE utilities
