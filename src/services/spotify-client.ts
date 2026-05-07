@@ -1,6 +1,5 @@
 import axios, { AxiosRequestConfig } from 'axios';
-import { SpotifyArtist, SpotifyAlbum, SpotifyTokens, SpotifyUserProfile, UnifiedCacheData } from './types';
-import { getCachedData, cacheData } from './cache-manager';
+import { SpotifyArtist, SpotifyAlbum, SpotifyTokens, SpotifyUserProfile } from './types';
 import { authManager } from './auth-manager';
 
 // Spotify configuration
@@ -189,19 +188,6 @@ export const getUserProfile = async (): Promise<SpotifyUserProfile> => {
   };
 };
 
-export const getCurrentUser = async (): Promise<string> => {
-  try {
-    const profile = await getUserProfile();
-    return profile.id;
-  } catch (error: any) {
-    if (error.message === 'AUTH_EXPIRED') {
-      throw error;
-    }
-    console.error('Error getting user info:', error);
-    return 'unknown';
-  }
-};
-
 export const getArtistAlbums = async (
   artistId: string,
   market: string
@@ -238,18 +224,7 @@ export const getArtistAlbums = async (
   return albums;
 };
 
-export const getFollowedArtists = async (forceRefresh: boolean = false): Promise<SpotifyArtist[]> => {
-  if (!forceRefresh) {
-    const cached = await getCachedData();
-    if (cached && cached.followedArtists.length > 0) {
-      console.log(`Using cached artists: ${cached.followedArtists.length} artists from ${new Date(cached.artistsFetchedAt).toLocaleString()}`);
-      return cached.followedArtists;
-    }
-  }
-
-  console.log('Fetching fresh followed artists from Spotify...');
-
-  const currentUserId = await getCurrentUser();
+export const fetchFollowedArtists = async (): Promise<SpotifyArtist[]> => {
   const artists: SpotifyArtist[] = [];
   let url: string | null = 'https://api.spotify.com/v1/me/following?type=artist&limit=50';
   let pageCount = 0;
@@ -289,29 +264,6 @@ export const getFollowedArtists = async (forceRefresh: boolean = false): Promise
       }
     }
   }
-  
-  if (artists.length > 0) {
-    const existingCache = await getCachedData();
-    if (existingCache) {
-      existingCache.followedArtists = artists;
-      existingCache.artistsFetchedAt = Date.now();
-      existingCache.userId = currentUserId;
-      await cacheData(existingCache);
-    } else {
-      const basicCache: UnifiedCacheData = {
-        followedArtists: artists,
-        artistsFetchedAt: Date.now(),
-        releases: [],
-        lastProcessedArtistIndex: 0,
-        totalArtists: artists.length,
-        isComplete: false,
-        timestamp: Date.now(),
-        userId: currentUserId
-      };
-      await cacheData(basicCache);
-    }
-    console.log(`Cached ${artists.length} followed artists`);
-  }
-  
+
   return artists;
 };

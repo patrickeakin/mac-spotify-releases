@@ -45,14 +45,3 @@ export interface FormattedRelease {
   spotifyUrl: string;
   source: string;
 }
-
-export interface UnifiedCacheData {
-  followedArtists: SpotifyArtist[];
-  artistsFetchedAt: number;
-  releases: FormattedRelease[];
-  lastProcessedArtistIndex: number;
-  totalArtists: number;
-  isComplete: boolean;
-  timestamp: number;
-  userId: string;
-}

@@ -1,17 +1,18 @@
-import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
+import { useQueryClient, useIsRestoring } from '@tanstack/react-query';
 import './App.css';
 import {
   authManager,
-  clearUnifiedCache,
   exchangeCodeForToken,
   getAccessTokenFromUrl,
   getAuthUrl,
   getAuthorizationCodeFromUrl,
-  getCachedData,
-  getNewReleasesUnified,
-  SpotifyTokens
+  SpotifyTokens,
 } from './services';
 import { CoverArt } from './components';
+import { useReleases, RELEASES_QUERY_KEY } from './hooks/useReleases';
+import { useRefreshReleases } from './hooks/useRefreshReleases';
+import { ARTISTS_QUERY_KEY } from './hooks/useFollowedArtists';
 
 const formatRelativeTime = (timestamp: number): string => {
   const diff = Date.now() - timestamp;
@@ -26,107 +27,37 @@ const formatRelativeTime = (timestamp: number): string => {
   return new Date(timestamp).toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
 };
 
-interface Release {
-  id: string;
-  name: string;
-  artist: string;
-  artistId?: string;
-  image: string;
-  releaseDate: string;
-  type: string;
-  spotifyUrl: string;
-  source?: string;
-}
-
 type FilterType = 'today' | '7days' | '90days' | '6months';
 type SortType = 'artist' | 'releaseDate';
 
 function App() {
-  const [releases, setReleases] = useState<Release[]>([]);
+  const queryClient = useQueryClient();
+  const isRestoring = useIsRestoring();
+  const { releases, lastUpdated } = useReleases();
+  const { refresh, isRefreshing, progress, error: refreshError } = useRefreshReleases();
+
   const [filter, setFilter] = useState<FilterType>('7days');
   const [sort, setSort] = useState<SortType>('releaseDate');
   const [isAuthenticated, setIsAuthenticated] = useState(false);
-  const [loading, setLoading] = useState(false);
-  const [loadingProgress, setLoadingProgress] = useState({ current: 0, total: 0, newReleases: 0 });
-  const [hydrated, setHydrated] = useState(false);
-  const [lastUpdated, setLastUpdated] = useState<number | null>(null);
-  const abortControllerRef = useRef<AbortController | null>(null);
-
-  const fetchReleases = useCallback(async () => {
-    if (abortControllerRef.current) {
-      abortControllerRef.current.abort();
-    }
-
-    const newAbortController = new AbortController();
-    abortControllerRef.current = newAbortController;
-
-    try {
-      setLoading(true);
-      setLoadingProgress({ current: 0, total: 0, newReleases: 0 });
-
-      console.log('🔄 Fetching releases using unified API...');
-
-      const releases = await getNewReleasesUnified((current, total, newReleasesCount) => {
-        if (!newAbortController.signal.aborted) {
-          setLoadingProgress({ current, total, newReleases: newReleasesCount });
-        }
-      });
-
-      if (!newAbortController.signal.aborted) {
-        setReleases(releases);
-        setLastUpdated(Date.now());
-        console.log(`✅ Successfully loaded ${releases.length} releases`);
-      }
-    } catch (error: any) {
-      if (error.name === 'AbortError') {
-        console.log('Fetch was cancelled');
-        return;
-      }
-      if (error.message === 'AUTH_EXPIRED') {
-        console.warn('Auth expired during fetch — user must re-authenticate');
-        return;
-      }
-      console.error('Error fetching releases:', error);
-      alert('Error fetching releases. Please try again.');
-    } finally {
-      if (!newAbortController.signal.aborted) {
-        setLoading(false);
-        abortControllerRef.current = null;
-      }
-    }
-  }, []);
 
   useEffect(() => {
-    const init = async () => {
-      await authManager.hydrate();
-      setIsAuthenticated(authManager.isAuthenticated());
-
-      const cached = await getCachedData();
-      if (cached?.releases?.length) {
-        setReleases(cached.releases);
-      }
-      if (cached?.timestamp) {
-        setLastUpdated(cached.timestamp);
-      }
-      setHydrated(true);
-    };
-    init();
-
+    authManager.hydrate().then(() => setIsAuthenticated(authManager.isAuthenticated()));
     const unsubscribe = authManager.onChange(authed => {
       setIsAuthenticated(authed);
       if (!authed) {
-        setReleases([]);
-        setLastUpdated(null);
+        queryClient.removeQueries({ queryKey: RELEASES_QUERY_KEY });
+        queryClient.removeQueries({ queryKey: ARTISTS_QUERY_KEY });
       }
     });
+    return unsubscribe;
+  }, [queryClient]);
 
-    return () => {
-      unsubscribe();
-      if (abortControllerRef.current) {
-        abortControllerRef.current.abort();
-      }
-    };
-  }, []);
+  useEffect(() => {
+    if (refreshError) {
+      console.error('Refresh failed:', refreshError);
+      alert('Error fetching releases. Please try again.');
+    }
+  }, [refreshError]);
 
   useEffect(() => {
     const handleTokens = async (tokens: SpotifyTokens) => {
@@ -204,36 +135,19 @@ function App() {
     console.log('🚀 Starting OAuth flow with URL:', authUrl);
 
     if ((window as any).electronAPI?.openExternal) {
-      console.log('💻 Running in Electron, opening external browser');
       (window as any).electronAPI.openExternal(authUrl);
     } else {
-      console.log('🌐 Running in browser, redirecting');
       window.location.href = authUrl;
     }
   };
 
   const handleLogout = async () => {
     await authManager.logout();
-    await clearUnifiedCache();
-    setReleases([]);
-    setLastUpdated(null);
   };
 
-  const handleRefreshArtists = async () => {
-    if (loading) {
-      console.log('Refresh already in progress, ignoring');
-      return;
-    }
-    if (!isAuthenticated) return;
-
-    await clearUnifiedCache();
-    fetchReleases();
-  };
-
-  const handleInitialFetch = () => {
-    if (loading) return;
-    if (!isAuthenticated) return;
-    fetchReleases();
+  const handleRefreshArtists = () => {
+    if (isRefreshing || !isAuthenticated) return;
+    refresh();
   };
 
   const handleReleaseClick = (spotifyUrl: string) => {
@@ -245,35 +159,24 @@ function App() {
       .filter(release => {
         const releaseDate = new Date(release.releaseDate);
         const now = new Date();
-        let dateMatch = false;
-
         switch (filter) {
           case 'today':
-            dateMatch = releaseDate.toDateString() === now.toDateString();
-            break;
+            return releaseDate.toDateString() === now.toDateString();
           case '7days':
-            const sevenDaysAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
-            dateMatch = releaseDate >= sevenDaysAgo;
-            break;
+            return releaseDate >= new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
           case '90days':
-            const ninetyDaysAgo = new Date(now.getTime() - 90 * 24 * 60 * 60 * 1000);
-            dateMatch = releaseDate >= ninetyDaysAgo;
-            break;
+            return releaseDate >= new Date(now.getTime() - 90 * 24 * 60 * 60 * 1000);
           case '6months':
-            const sixMonthsAgo = new Date(now.getTime() - 180 * 24 * 60 * 60 * 1000);
-            dateMatch = releaseDate >= sixMonthsAgo;
-            break;
+            return releaseDate >= new Date(now.getTime() - 180 * 24 * 60 * 60 * 1000);
           default:
-            dateMatch = true;
+            return true;
         }
-        return dateMatch;
       })
       .sort((a, b) => {
         if (sort === 'artist') {
           return a.artist.localeCompare(b.artist);
-        } else {
-          return new Date(b.releaseDate).getTime() - new Date(a.releaseDate).getTime();
         }
+        return new Date(b.releaseDate).getTime() - new Date(a.releaseDate).getTime();
       });
   }, [releases, filter, sort]);
 
@@ -406,26 +309,26 @@ function App() {
 
       <div className="content-container">
         <main className="content">
-          {!hydrated ? (
+          {isRestoring ? (
             <div className="loading">
               <div className="loading-text">Loading…</div>
             </div>
-          ) : loading ? (
+          ) : isRefreshing ? (
             <div className="loading">
-              {loadingProgress.total > 0 ? (
+              {progress.total > 0 ? (
                 <div className="loading-progress">
                   <div className="loading-text">Scanning artists for new releases...</div>
                   <div className="loading-subtext" data-testid="progress-text">
-                    {loadingProgress.current} of {loadingProgress.total} artists checked
+                    {progress.current} of {progress.total} artists checked
                   </div>
                   <div className="loading-count" data-testid="releases-count">
-                    Found {loadingProgress.newReleases} new releases so far
+                    Found {progress.newReleases} new releases so far
                   </div>
                   <div className="progress-bar-container">
                     <div
                       className="progress-bar"
                       style={{
-                        width: `${(loadingProgress.current / loadingProgress.total) * 100}%`
+                        width: `${(progress.current / progress.total) * 100}%`
                       }}
                     />
                   </div>
@@ -440,7 +343,7 @@ function App() {
                 <p>Click the button below to scan your followed artists for new releases.</p>
                 <button
                   className="import-button"
-                  onClick={handleInitialFetch}
+                  onClick={handleRefreshArtists}
                   data-testid="import-artists-button"
                 >
                   Import Followed Artists
