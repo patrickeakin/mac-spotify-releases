@@ -34,8 +34,8 @@
   "scripts": {
     "start": "vite",
     "build": "vite build",
-    "test": "vitest run",
-    "test:watch": "vitest",
+    "test": "TZ=UTC vitest run",
+    "test:watch": "TZ=UTC vitest",
     "typecheck": "tsc --noEmit",
     "electron": "electron .",
     "electron:dev": "concurrently \"npm start\" \"wait-on http://localhost:3001 && NUMU_DEV_PORT=3001 electron .\"",
