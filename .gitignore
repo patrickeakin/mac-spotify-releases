@@ -36,3 +36,7 @@ logs/
 # Temporary files
 tmp/
 temp/
+
+# Personal data exports
+followed-artists.json
+followed-artists.txt
