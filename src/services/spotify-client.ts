@@ -238,7 +238,8 @@ export const fetchFollowedArtists = async (): Promise<SpotifyArtist[]> => {
 
       const spotifyArtists = page.artists.items.map((artist: any) => ({
         id: artist.id,
-        name: artist.name
+        name: artist.name,
+        genres: artist.genres ?? []
       }));
 
       artists.push(...spotifyArtists);

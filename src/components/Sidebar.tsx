@@ -10,8 +10,10 @@ interface SidebarProps {
   filter: FilterType;
   sort: SortType;
   lastUpdated: number | null;
+  hideClassical: boolean;
   onFilterChange: (filter: FilterType) => void;
   onSortChange: (sort: SortType) => void;
+  onHideClassicalChange: (hide: boolean) => void;
   onLogout: () => void;
   onRefresh: () => void;
 }
@@ -44,8 +46,10 @@ export const Sidebar: React.FC<SidebarProps> = ({
   filter,
   sort,
   lastUpdated,
+  hideClassical,
   onFilterChange,
   onSortChange,
+  onHideClassicalChange,
   onLogout,
   onRefresh,
 }) => {
@@ -109,6 +113,22 @@ export const Sidebar: React.FC<SidebarProps> = ({
             ARTIST
           </li>
         </ul>
+      </div>
+      <div>
+        <h3>GENRE</h3>
+        <div className="toggle-container">
+          <label className="toggle-label">
+            <input
+              type="checkbox"
+              className="toggle-checkbox"
+              checked={hideClassical}
+              onChange={e => onHideClassicalChange(e.target.checked)}
+              data-testid="toggle-hide-classical"
+            />
+            <span className="toggle-slider" />
+            <span className="toggle-text">HIDE CLASSICAL</span>
+          </label>
+        </div>
       </div>
       <div>
         <h3 className="clickable-button" onClick={onLogout} data-testid="logout-button">

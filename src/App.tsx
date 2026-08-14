@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import './App.css';
 import { LoginScreen, Sidebar, ReleaseList, ToastContainer } from './components';
 import { FilterType, SortType } from './components/Sidebar';
@@ -7,6 +7,7 @@ import { useOAuthCallback } from './hooks/useOAuthCallback';
 import { useReleases } from './hooks/useReleases';
 import { useRefreshReleases } from './hooks/useRefreshReleases';
 import { useFilteredReleases } from './hooks/useFilteredReleases';
+import { isClassical } from './lib/genres';
 import { useToast } from './contexts/ToastContext';
 import { useIsRestoring } from '@tanstack/react-query';
 
@@ -19,6 +20,7 @@ function App() {
 
   const [filter, setFilter] = useState<FilterType>('7days');
   const [sort, setSort] = useState<SortType>('releaseDate');
+  const [hideClassical, setHideClassical] = useState(false);
 
   useOAuthCallback();
 
@@ -29,7 +31,13 @@ function App() {
     }
   }, [refreshError, showToast]);
 
-  const visibleReleases = useFilteredReleases(releases, filter, sort);
+  // Applied before the sidebar sees the list so its counts match what's shown.
+  const genreFiltered = useMemo(
+    () => (hideClassical ? releases.filter(r => !isClassical(r.genres)) : releases),
+    [releases, hideClassical],
+  );
+
+  const visibleReleases = useFilteredReleases(genreFiltered, filter, sort);
 
   const handleRefresh = () => {
     if (isRefreshing || !isAuthenticated) return;
@@ -52,12 +60,14 @@ function App() {
   return (
     <div className="app-container">
       <Sidebar
-        releases={releases}
+        releases={genreFiltered}
         filter={filter}
         sort={sort}
         lastUpdated={lastUpdated}
+        hideClassical={hideClassical}
         onFilterChange={setFilter}
         onSortChange={setSort}
+        onHideClassicalChange={setHideClassical}
         onLogout={logout}
         onRefresh={handleRefresh}
       />

@@ -29,7 +29,10 @@ const albumToFormattedRelease = (album: SpotifyAlbum, primaryArtist: SpotifyArti
     releaseDate: album.release_date,
     type: album.album_type,
     spotifyUrl: album.external_urls.spotify,
-    source: 'spotify'
+    source: 'spotify',
+    // Albums carry no usable genres of their own; genres live on the artist.
+    // Use the followed artist's, since that's the one we looked this album up by.
+    genres: primaryArtist.genres ?? []
   };
 };
 

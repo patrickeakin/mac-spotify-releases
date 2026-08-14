@@ -3,6 +3,8 @@
 export interface SpotifyArtist {
   id: string;
   name: string;
+  // Optional: artists cached before genre support was added won't have it.
+  genres?: string[];
 }
 
 export interface SpotifyUserProfile {
@@ -44,4 +46,7 @@ export interface FormattedRelease {
   type: string;
   spotifyUrl: string;
   source: string;
+  // Genres of the followed artist this release came from. Optional: releases
+  // cached before genre support was added won't have it until the next refresh.
+  genres?: string[];
 }
