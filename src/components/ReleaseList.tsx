@@ -50,7 +50,7 @@ export const ReleaseList: React.FC<ReleaseListProps> = ({
             </div>
           </div>
         ) : (
-          <div className="loading-text">Loading new releases...</div>
+          <div className="loading-text">Loading your followed artists...</div>
         )}
       </div>
     );
